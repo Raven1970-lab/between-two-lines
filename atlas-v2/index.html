@@ -748,6 +748,8 @@ body.gx-hand #goHint{display:none!important}
 #gxMode{position:fixed;top:66px;left:20px;z-index:10;display:none;padding:8px 13px;border-radius:5px;border:1px solid rgba(226,216,193,.36);background:rgba(30,28,24,.92);color:#bcb5a8;font:400 13px/1.2 'Gulax','LXGW Marker Gothic','PingFang SC',sans-serif;letter-spacing:.04em;cursor:pointer}
 #gxMode:hover{color:#fff}
 #gxMode.on{display:block}
+#gxRec{position:fixed;top:106px;left:20px;z-index:10;display:none;padding:8px 13px;border-radius:5px;border:1px solid rgba(226,216,193,.36);background:rgba(30,28,24,.92);color:#bcb5a8;font:400 13px/1.2 'Gulax','LXGW Marker Gothic','PingFang SC',sans-serif;cursor:pointer}
+#gxRec.on{display:block}#gxRec.rec{color:#fff;border-color:#e0533c;background:rgba(150,40,25,.92)}
 #gxMode.gx-hover,#bar button.gx-hover,#language button.gx-hover{outline:2px solid #e2b23c;outline-offset:2px}
 @media(max-width:700px){#gxGuide{max-width:calc(100vw - 24px);top:64px}#gxChoice .two{display:block}#gxChoice .or{display:block;width:auto;margin:12px 0}.gxBig{display:block;width:100%;max-width:none}#gxIntro .g3{display:block}#gxIntro .g{padding:12px 0!important;border-right:0!important}#gxMode{top:58px;left:12px}}
 </style>
@@ -781,6 +783,7 @@ body.gx-hand #goHint{display:none!important}
 <div id="gxGuide" aria-live="polite"><i data-en="NEXT STEP" data-zh="下 一 步"></i><b id="gxGuideA"></b><span id="gxGuideB"></span></div>
 <div id="gxCam" aria-hidden="true"><div class="v"><video id="gxVideo" playsinline muted></video><canvas id="gxDots" width="176" height="132"></canvas></div><div class="t" id="gxCamT"></div></div>
 <button id="gxMode" type="button" data-en="Mouse or hand" data-zh="换操作方式"></button>
+<button id="gxRec" type="button"></button>
 <script>
 // Gesture mode: a hand seen by the camera drives the page through the same pointer events a mouse sends,
 // so every existing interaction (buttons, picking stops, dragging the map, text ripples) works unchanged.
@@ -792,7 +795,7 @@ let zh=(()=>{try{return localStorage.getItem('atlas-language')==='zh';}catch(e){
 const L=p=>zh?p[1]:p[0];
 let sayP=['',''],tipP=null,camP=null;
 function words(){document.querySelectorAll('[data-en]').forEach(e=>{e.textContent=zh?e.dataset.zh:e.dataset.en;});
-  say.textContent=L(sayP);showGuide();if(camP)camT.textContent=L(camP);}
+  say.textContent=L(sayP);showGuide();if(camP)camT.textContent=L(camP);try{recLabel();}catch(e){}}
 function setSay(p){sayP=p;say.textContent=L(p);}
 const choice=$('gxChoice'),intro=$('gxIntro'),cur=$('gxCursor'),guide=$('gxGuide'),guideA=$('gxGuideA'),guideB=$('gxGuideB'),camBox=$('gxCam'),video=$('gxVideo'),dots=$('gxDots'),camT=$('gxCamT'),say=$('gxSay'),go=$('gxGo'),retry=$('gxRetry'),modeBtn=$('gxMode');
 const T={ // tuning
@@ -810,7 +813,19 @@ let sx=innerWidth/2,sy=innerHeight/2,have=false,seenAt=0,lostAt=0,lastClick=0,ho
 let rawPose='',rawN=0,pose='none',fromPose='none',poseSince=0,fired=false,lastFist=-1e9,lastOpen=-1e9,lastPose=-1e9;
 let dwellAt=0,dwellX=0,dwellY=0,dwellLock=null,tapAt=0,tapX=0,tapY=0,reachBase=0,panning=false,panX=0,panY=0,zooming=false,zoomRef=null;
 const stats={dwells:0,clicks:0,drags:0,zooms:0,opens:0,closes:0,lost:0,frames:0,blockedFast:0,blockedSettle:0,tapsSlow:0};
-function log(...a){if(TEST||Q.has('gxlog'))console.log('[gx]',...a);}
+/* ---------- debug recording: hand points per frame (no camera image), downloaded as a file to replay the real hand ---------- */
+const recBtn=$('gxRec');let rec=null;
+function recLabel(){recBtn.textContent=rec?L(['● Stop & save ('+rec.f.length+')','● 停止并保存（'+rec.f.length+'）']):L(['Record debug data','录制调试数据']);recBtn.classList.toggle('rec',!!rec);}
+recBtn.onclick=()=>{if(!rec){rec={meta:{v:'v9',ua:navigator.userAgent,w:innerWidth,h:innerHeight,vw:video.videoWidth,vh:video.videoHeight,delegate:gx.delegate,T:{...T},start:Date.now()},f:[],ev:[]};recLabel();return;}
+  const r=rec;rec=null;recLabel();const b=new Blob([JSON.stringify(r)],{type:'application/json'}),a=document.createElement('a');
+  a.href=URL.createObjectURL(b);a.download='gesture-debug-'+new Date().toISOString().slice(0,19).replace(/[:T]/g,'-')+'.json';document.body.appendChild(a);a.click();setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove();},2000);};
+const r4=v=>Math.round(v*1e4)/1e4;
+function recFrame(hs,hd,t){if(!rec)return;if(rec.f.length>=30*180){recBtn.click();return;} // 3 minutes at most
+  const st=window.atlas?atlas.state():{};const c=st.camera,g=st.target;
+  rec.f.push({t:Math.round(t),hs:hs.map(h=>h.map(p=>[r4(p.x),r4(p.y),r4(p.z||0)])),hd:(hd||[]).map(x=>x&&x[0]?[x[0].categoryName,r4(x[0].score)]:null),
+    o:{pose,two:twoOn,pan:panning,x:Math.round(sx),y:Math.round(sy),st:st.state,d:c&&g?r4(Math.hypot(c[0]-g[0],c[1]-g[1],c[2]-g[2])):null,fps:Math.round(fps)}});
+  if(rec.f.length%30===0)recLabel();}
+function log(...a){if(rec)rec.ev.push([Math.round(performance.now()),a.join(' ')]);if(TEST||Q.has('gxlog'))console.log('[gx]',...a);}
 // Short confirmations ("Next stop") take over the guide for a moment, then it goes back to the next step.
 let tipUntil=0;
 function tip(p,ms){tipP=p;tipUntil=performance.now()+(ms||1500);showGuide();}
@@ -839,9 +854,9 @@ $('gxPickHand').onclick=()=>useHand(); // a real click here also unlocks sound f
 $('gxUseMouse').onclick=()=>useMouse();
 retry.onclick=()=>useHand();
 go.onclick=()=>{intro.classList.remove('on');showGuide();};
-modeBtn.onclick=()=>{stopCam();mode=null;intro.classList.remove('on');modeBtn.classList.remove('on');choice.classList.remove('gone');};
-function useMouse(){stopCam();mode='mouse';if(window.atlas&&atlas.setHandMode)atlas.setHandMode(false);choice.classList.add('gone');intro.classList.remove('on');modeBtn.classList.add('on');untip();log('mode mouse');}
-async function useHand(){mode='hand';if(window.atlas&&atlas.setHandMode)atlas.setHandMode(true);choice.classList.add('gone');intro.classList.add('on');modeBtn.classList.add('on');go.disabled=true;retry.style.display='none';
+modeBtn.onclick=()=>{stopCam();mode=null;recBtn.classList.remove('on');intro.classList.remove('on');modeBtn.classList.remove('on');choice.classList.remove('gone');};
+function useMouse(){stopCam();mode='mouse';recBtn.classList.remove('on');if(window.atlas&&atlas.setHandMode)atlas.setHandMode(false);choice.classList.add('gone');intro.classList.remove('on');modeBtn.classList.add('on');untip();log('mode mouse');}
+async function useHand(){mode='hand';recBtn.classList.add('on');recLabel();if(window.atlas&&atlas.setHandMode)atlas.setHandMode(true);choice.classList.add('gone');intro.classList.add('on');modeBtn.classList.add('on');go.disabled=true;retry.style.display='none';
   setSay(['Starting the camera…','正在打开摄像头…']);log('mode hand');
   if(TEST){setSay(['Test input ready','测试输入已就绪']);go.disabled=false;running=true;return;}
   try{
@@ -878,7 +893,7 @@ function loop(){if(!running)return;raf=requestAnimationFrame(loop);
 // The picture follows the distance between the hands directly (twice as far apart = twice as close), so it stops the moment the hands stop.
 let prayAt=0,lastPray=0,prayFired=false,twoGap=0,twoOn=false,twoOff=0,twoN=0,twoD0=0,primW=null;const fD={t:null,c:.6};
 function openish(h){const w=h[0];let n=0;for(const [tp,pp] of [[8,6],[12,10],[16,14],[20,18]])if(dw(w,h[tp])>dw(w,h[pp])*1.1)n++;return n>=2;}
-function frame(hs,t,hd){t=t||performance.now();hd=hd||[];
+function frame(hs,t,hd){t=t||performance.now();hd=hd||[];recFrame(hs,hd,t);
   // two detections must really be two hands: different left/right, apart from each other, about the same size (a doubled or ghost detection is not)
   if(hs.length>1){const side=k=>hd[k]&&hd[k][0]&&hd[k][0].categoryName,pa=dw(hs[0][0],hs[0][9]),pb=dw(hs[1][0],hs[1][9]);
     const diff=side(0)&&side(1)&&side(0)!==side(1),real=Math.min(pa,pb)/Math.max(pa,pb)>.45&&(diff?true:(!side(0)||side(0)!==side(1))&&dw(hs[0][9],hs[1][9])>Math.max(pa,pb)*1.5);
@@ -945,7 +960,7 @@ function posture(h,palm){const w=h[0];let ext=0,cur=0,straight=0;
   if(p==='other'&&pose==='fist'&&ext<2)p='fist';
   if(p==='other'&&pose==='point'&&dw(w,h[8])>dw(w,h[6])*1.05)p='point';
   return [p,spread];}
-function feed(h,t){t=t||performance.now();stats.frames++;fpsN++;if(t-fpsT>1000){fps=fpsN*1000/(t-fpsT);fpsN=0;fpsT=t;const pn={point:['pointing','指'],open:['open hand','张开'],fist:['fist','握拳'],pinch:['pinch','捏住'],other:['…','…']}[pose]||['',''];const zs=twoOn?[' · two-hand zoom',' · 双手缩放']:['',''];camP=[(have?'Hand: '+pn[0]+zs[0]:'No hand')+'  '+fps.toFixed(0)+' fps · v8',(have?'手势：'+pn[1]+zs[1]:'未识别到手')+'  '+fps.toFixed(0)+' fps · v8'];camT.textContent=L(camP);}
+function feed(h,t){t=t||performance.now();stats.frames++;fpsN++;if(t-fpsT>1000){fps=fpsN*1000/(t-fpsT);fpsN=0;fpsT=t;const pn={point:['pointing','指'],open:['open hand','张开'],fist:['fist','握拳'],pinch:['pinch','捏住'],other:['…','…']}[pose]||['',''];const zs=twoOn?[' · two-hand zoom',' · 双手缩放']:['',''];camP=[(have?'Hand: '+pn[0]+zs[0]:'No hand')+'  '+fps.toFixed(0)+' fps · v9',(have?'手势：'+pn[1]+zs[1]:'未识别到手')+'  '+fps.toFixed(0)+' fps · v9'];camT.textContent=L(camP);}
   if(!h){gx.pose=null;if(have&&!lostAt)lostAt=t;if(have&&t-lostAt>T.lostMs)lose(true);return;}
   lostAt=0;if(!have){have=true;seenAt=t;fX.t=fY.t=null;lastTX=null;offX=offY=0;srcKind='';rawPose='';rawN=0;pose='none';tapAt=0;reachBase=0;cur.classList.add('on');untip();log('hand found');}
   const w0=h[0],m9=h[9],palm=dw(w0,m9)||1e-3;
