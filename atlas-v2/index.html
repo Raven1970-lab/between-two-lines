@@ -670,7 +670,11 @@ setLoad(0.95,_zh?'正在折好地图…':'Folding the map…');await new Promise
 // Compile/render visible content on demand; avoid an all-effects startup burst.
 if(atlasStopped)return;
 computeReached();drawMap();mapTex.needsUpdate=true;
-window.atlas={renderHealth:()=>({stopped:atlasStopped,ready:atlasReady,scheduled:!!atlasRaf,textUploads:textUploadCount,textWidth:tc.width,textHeight:tc.height,bufferWidth:cv.width,bufferHeight:cv.height}),screenOf:k=>{const v=spotW(k).project(camera);return [(v.x+1)/2*innerWidth,(1-v.y)/2*innerHeight];},goTo,next,overview,finale,startOver,state:()=>({state,active,language:lang,camera:camera.position.toArray(),target:controls.target.toArray(),pointers:pointers.size,multi,progress,next:nextKey(),foldF,trainElapsed,trainX,trainZ,trainRunning,audioState:audioCtx&&audioCtx.state,audioOK,flatFragments:flatPieces.length,visited:[...visited],seen:[...seen],arrows:arrows.length,arrowAppearance:arrows.map(a=>({color:a.mat.color.getHexString(),opacity:a.mat.opacity})),goldOn,pieces:pieces.map(p=>({key:p.key,img:p.cfg.img,worldX:p.g.getWorldPosition(new THREE.Vector3()).x,width:p.w,layerY:p.g.position.y,frame:p.u.uF.value,rot:p.rot,visible:p.g.visible,opacity:p.u.uFade.value}))})};
+let zS=null;
+function zoomStart(){if(anim||!(state==='map'||state==='station')||!controls.enabled)return false;zS={d:camera.position.distanceTo(controls.target)};controls.enableDamping=false;return true;}
+function zoomSet(r){if(!zS||anim){zS=null;controls.enableDamping=true;return;}const dir=camera.position.clone().sub(controls.target);dir.setLength(clamp(zS.d/r,controls.minDistance,controls.maxDistance));camera.position.copy(controls.target).add(dir);}
+function zoomEnd(){if(zS){zS=null;controls.enableDamping=true;}}
+window.atlas={zoomStart,zoomSet,zoomEnd,renderHealth:()=>({stopped:atlasStopped,ready:atlasReady,scheduled:!!atlasRaf,textUploads:textUploadCount,textWidth:tc.width,textHeight:tc.height,bufferWidth:cv.width,bufferHeight:cv.height}),screenOf:k=>{const v=spotW(k).project(camera);return [(v.x+1)/2*innerWidth,(1-v.y)/2*innerHeight];},goTo,next,overview,finale,startOver,state:()=>({state,active,language:lang,camera:camera.position.toArray(),target:controls.target.toArray(),pointers:pointers.size,multi,progress,next:nextKey(),foldF,trainElapsed,trainX,trainZ,trainRunning,audioState:audioCtx&&audioCtx.state,audioOK,flatFragments:flatPieces.length,visited:[...visited],seen:[...seen],arrows:arrows.length,arrowAppearance:arrows.map(a=>({color:a.mat.color.getHexString(),opacity:a.mat.opacity})),goldOn,pieces:pieces.map(p=>({key:p.key,img:p.cfg.img,worldX:p.g.getWorldPosition(new THREE.Vector3()).x,width:p.w,layerY:p.g.position.y,frame:p.u.uF.value,rot:p.rot,visible:p.g.visible,opacity:p.u.uFade.value}))})};
 state='folded';setBusy();document.getElementById('bStart').textContent='Start';setCaption('A folded map lies on the table.');showText('cover');
 document.getElementById('langEN').disabled=false;document.getElementById('langZH').disabled=false;setLanguage(lang);
 atlasReady=true;if(!atlasStopped&&!document.hidden)atlasRaf=requestAnimationFrame(loop);
@@ -761,8 +765,8 @@ body.gx-hand #goHint{display:none!important}
 <div class="g3">
 <div class="g"><i>01</i><b data-en="Point" data-zh="指"></b><span data-en="Hold up your index finger. The ring on screen follows it." data-zh="伸出食指，屏幕上的圆圈跟着走。"></span></div>
 <div class="g"><i>02</i><b data-en="Point and hold" data-zh="指着停一下"></b><span data-en="Keep one finger on a gold ring or a button for a moment and it clicks: the piece stands up, and does it again to lay it down. A quick tap of the finger also clicks." data-zh="一根手指指着金圈或按钮停一下就会点击：纸片立起来，再来一次放下。手指快速点一下也可以。"></span></div>
-<div class="g"><i>03</i><b data-en="Pinch and move" data-zh="捏住再移动"></b><span data-en="Touch thumb and index fingertip to grab the map, move to drag it, let go to drop it. A hand just moving around never drags." data-zh="拇指和食指尖捏在一起就抓住地图，移动＝拖动，松开就放下。手只是随便晃动不会拖动。"></span></div>
-<div class="g"><i>04</i><b data-en="Open palm, push or pull" data-zh="张开手掌，前推或后拉"></b><span data-en="Hold an open palm still for a moment, then move it towards the screen to zoom in, or back to zoom out." data-zh="张开手掌停一下，再往屏幕推近＝放大，往回拉远＝缩小。"></span></div>
+<div class="g"><i>03</i><b data-en="Open hand, move" data-zh="张开五指移动"></b><span data-en="Drags the whole map, like a multi-finger swipe." data-zh="拖动整张地图，像在触控板上多指滑动。"></span></div>
+<div class="g"><i>04</i><b data-en="Two open hands" data-zh="双手张开"></b><span data-en="Raise both hands open: pull them apart to zoom in, bring them together to zoom out. Lower one hand to stop." data-zh="举起两只张开的手：拉开＝放大，靠拢＝缩小。放下一只手就停。"></span></div>
 <div class="g"><i>05</i><b data-en="Fist, then open hand" data-zh="握拳，再张开"></b><span data-en="Opens the book." data-zh="打开地图书。"></span></div>
 <div class="g"><i>06</i><b data-en="Open hand, then hold a fist" data-zh="张开，再握拳停住"></b><span data-en="Closes the book (keep the fist for a moment)." data-zh="合上地图书（拳头要保持一下）。"></span></div>
 </div>
@@ -797,7 +801,7 @@ const T={ // tuning
   tapDip:.82,tapBack:.9,tapBend:32,tapMs:450,cooldown:450, // tap: the index bends 32° more than its resting bend (3D, so a tap towards the camera counts) or its reach drops below 82%, and straightens within 0.45 s
   holdMin:350,switchMs:700,poseLock:900, // fist <-> open: each held 0.35 s (longer than any tap), changed directly within 0.7 s, then a 0.9 s pause
   dwellMs:800,dwellR:40,              // pointing still on a gold ring or button for 0.8 s (within 40 px) = click
-  pinchOn:.30,pinchOff:.45,panWait:150, // thumb + index tip closer than .30 palm = pinch (released above .45); a pinch held 0.15 s grabs the map
+  pinchOn:.30,pinchOff:.45,panWait:250, // thumb + index tip closer than .30 palm = pinch (released above .45); a pinch held 0.15 s grabs the map
   closeHold:650,                      // open hand -> fist must hold the fist this long before the book closes
   zoomWait:350,zoomDead:.07}; // open palm held still, then pushed towards / pulled from the camera: zoom after a 10% change in palm size // fingertip-to-thumb spread / palm size: together < .55; one zoom step per .08
 let mode=null,lm=null,stream=null,running=false,lastVT=-1,raf=0,landmarker=null,modelP=null;
@@ -819,7 +823,7 @@ function nextStep(){const st=window.atlas?atlas.state().state:'',gh=$('goHint'),
   if(st==='finale')return[['Watch the map turn gold','看地图变成金色'],['',''],null];
   if(vis('bLeave'))return[['Point at the gold button and hold still to pick up the feather','指着金色按钮停一下，拾起羽毛'],['',''],'bLeave'];
   if(st==='station')return[['Point one finger at the next gold ring and hold still'+to,'伸出一根手指，指着下一个金圈停一下'+to],['Point at the standing piece again to lay it down · Open hand then fist closes the book','再指着立起来的东西停一下就会放下 · 张开再握拳合上书'],null];
-  if(st==='map')return[['Point one finger at the gold ring and hold still'+to,'伸出一根手指，指着金圈停一下'+to],['Pinch and move to drag · Open palm, push / pull to zoom','捏住移动＝拖动 · 张开手掌前推 / 后拉＝缩放'],null];
+  if(st==='map')return[['Point one finger at the gold ring and hold still'+to,'伸出一根手指，指着金圈停一下'+to],['Open hand and move to drag · Two open hands apart / together to zoom','张开五指移动＝拖动 · 双手张开拉开 / 靠拢＝缩放'],null];
   return[['',''],['',''],null];}
 let targetEl=null;
 function showGuide(){const on=mode==='hand'&&running&&!intro.classList.contains('on');guide.classList.toggle('on',on);document.body.classList.toggle('gx-hand',on);
@@ -859,7 +863,7 @@ function stopCam(keepBox){running=false;cancelAnimationFrame(raf);if(stream){str
 function loadModel(){if(landmarker)return Promise.resolve();if(modelP)return modelP;
   modelP=(async()=>{// window.__gxBundle is set only by the fault-test page.
     const V=await import(window.__gxBundle||'./vendor/vision_bundle.mjs');const fs=await V.FilesetResolver.forVisionTasks('./vendor/wasm');
-    const opt=d=>({baseOptions:{modelAssetPath:'./vendor/models/hand_landmarker.task',delegate:d},runningMode:'VIDEO',numHands:1,minHandDetectionConfidence:.6,minHandPresenceConfidence:.6,minTrackingConfidence:.5});
+    const opt=d=>({baseOptions:{modelAssetPath:'./vendor/models/hand_landmarker.task',delegate:d},runningMode:'VIDEO',numHands:2,minHandDetectionConfidence:.6,minHandPresenceConfidence:.6,minTrackingConfidence:.5});
     try{landmarker=await V.HandLandmarker.createFromOptions(fs,opt('GPU'));gx.delegate='GPU';}catch(e){console.warn('GPU delegate failed, using CPU',e);landmarker=await V.HandLandmarker.createFromOptions(fs,opt('CPU'));gx.delegate='CPU';}
     log('model ready',gx.delegate);})();
   modelP.catch(()=>{modelP=null;});return modelP;}
@@ -868,9 +872,34 @@ function loop(){if(!running)return;raf=requestAnimationFrame(loop);
   if(video.readyState<2||video.currentTime===lastVT)return;lastVT=video.currentTime;
   const t0=performance.now();let r;try{r=landmarker.detectForVideo(video,t0);}catch(e){console.error(e);return;}
   detMs=detMs*.9+(performance.now()-t0)*.1;
-  const h=r&&r.landmarks&&r.landmarks[0];draw(h);feed(h||null,t0);}
-function draw(h){const c=dots.getContext('2d');c.clearRect(0,0,dots.width,dots.height);if(!h)return;c.fillStyle='#e2b23c';
-  for(const i of [0,4,5,8,9,12,16,20]){const p=h[i];c.beginPath();c.arc(p.x*dots.width,p.y*dots.height,i===8||i===4?4:2.4,0,7);c.fill();}}
+  frame((r&&r.landmarks)||[],t0);}
+/* ---------- two hands: both open, pull apart = zoom in, bring together = zoom out ---------- */
+// The picture follows the distance between the hands directly (twice as far apart = twice as close), so it stops the moment the hands stop.
+let twoOn=false,twoOff=0,twoN=0,twoD0=0,primW=null;const fD={t:null};
+function openish(h){const w=h[0];let n=0;for(const [tp,pp] of [[8,6],[12,10],[16,14],[20,18]])if(dw(w,h[tp])>dw(w,h[pp])*1.1)n++;return n>=3;}
+function frame(hs,t){t=t||performance.now();
+  let h=hs[0]||null;
+  if(hs.length>1&&primW){const d=x=>Math.hypot(x[0].x-primW.x,x[0].y-primW.y);h=d(hs[0])<=d(hs[1])?hs[0]:hs[1];} // the ring stays on the hand it was on
+  if(h)primW={x:h[0].x,y:h[0].y};
+  draw(hs);
+  const both=hs.length>1&&openish(hs[0])&&openish(hs[1]);
+  twoN=both?twoN+1:0;
+  const st=stNow();
+  if(!twoOn&&twoN>=T.stableFrames&&(st==='map'||st==='station')){
+    endPan();if(window.atlas&&atlas.zoomStart()){twoOn=true;fD.t=null;twoD0=0;cur.classList.add('down');tip(['Two hands: pull apart to zoom in, together to zoom out','双手：拉开放大，靠拢缩小'],1800);log('two-hand zoom');}}
+  twoOff=both?0:twoOff+1;
+  if(twoOn&&(hs.length<2||twoOff>8))twoEnd(t);
+  if(twoOn){const asp=(video.videoWidth||4)/(video.videoHeight||3),a=hs[0][9],b=hs[1][9];
+    const raw=Math.hypot((a.x-b.x)*asp,a.y-b.y),d=euro(fD,raw,t);if(!twoD0)twoD0=d;
+    const r=d/twoD0;atlas.zoomSet(Math.abs(r-1)<.03?1:r);lastZoom=t;stats.zooms++;
+    sx=clamp((1-(a.x+b.x)/2-T.rx0)/(T.rx1-T.rx0),0,1)*innerWidth;sy=clamp(((a.y+b.y)/2-T.ry0)/(T.ry1-T.ry0),0,1)*innerHeight;
+    cur.style.transform='translate('+sx+'px,'+sy+'px)';lostAt=0;return;}
+  feed(h,t);}
+function twoEnd(t){twoOn=false;twoN=0;if(window.atlas)atlas.zoomEnd();cur.classList.remove('down');
+  // start the single hand fresh, so lowering one hand is not read as a fist or a click
+  seenAt=t;rawPose='';rawN=0;pose='none';fired=true;fX.t=fY.t=null;lastPose=t;}
+function draw(hs){const c=dots.getContext('2d');c.clearRect(0,0,dots.width,dots.height);c.fillStyle='#e2b23c';
+  for(const h of hs)for(const i of [0,4,5,8,9,12,16,20]){const p=h[i];c.beginPath();c.arc(p.x*dots.width,p.y*dots.height,i===8||i===4?4:2.4,0,7);c.fill();}}
 /* ---------- hand -> pointer ---------- */
 // The hand works like a touchpad:
 //   point with the index finger = move the ring;   tap the index finger (bend and straighten) = click
@@ -895,7 +924,7 @@ function posture(h,palm){const w=h[0];let ext=0,cur=0,straight=0;
   // a loose finger while pointing is still pointing: no flicker to 'other', so the ring does not jump to the palm
   if(p==='other'&&pose==='point'&&dw(w,h[8])>dw(w,h[6])*1.05)p='point';
   return [p,spread];}
-function feed(h,t){t=t||performance.now();stats.frames++;fpsN++;if(t-fpsT>1000){fps=fpsN*1000/(t-fpsT);fpsN=0;fpsT=t;const pn={point:['pointing','指'],open:['open hand','张开'],fist:['fist','握拳'],pinch:['pinch','捏住'],other:['…','…']}[pose]||['',''];const zs=zooming?[' · zoom ready',' · 可缩放']:['',''];camP=[(have?'Hand: '+pn[0]+zs[0]:'No hand')+'  '+fps.toFixed(0)+' fps · v3',(have?'手势：'+pn[1]+zs[1]:'未识别到手')+'  '+fps.toFixed(0)+' fps · v3'];camT.textContent=L(camP);}
+function feed(h,t){t=t||performance.now();stats.frames++;fpsN++;if(t-fpsT>1000){fps=fpsN*1000/(t-fpsT);fpsN=0;fpsT=t;const pn={point:['pointing','指'],open:['open hand','张开'],fist:['fist','握拳'],pinch:['pinch','捏住'],other:['…','…']}[pose]||['',''];const zs=twoOn?[' · two-hand zoom',' · 双手缩放']:['',''];camP=[(have?'Hand: '+pn[0]+zs[0]:'No hand')+'  '+fps.toFixed(0)+' fps · v4',(have?'手势：'+pn[1]+zs[1]:'未识别到手')+'  '+fps.toFixed(0)+' fps · v4'];camT.textContent=L(camP);}
   if(!h){gx.pose=null;if(have&&!lostAt)lostAt=t;if(have&&t-lostAt>T.lostMs)lose(true);return;}
   lostAt=0;if(!have){have=true;seenAt=t;fX.t=fY.t=null;lastTX=null;offX=offY=0;srcKind='';rawPose='';rawN=0;pose='none';tapAt=0;reachBase=0;cur.classList.add('on');untip();log('hand found');}
   const w0=h[0],m9=h[9],palm=dw(w0,m9)||1e-3;
@@ -949,7 +978,7 @@ function onTap(t){
 function press(id){const b=$(id);if(b&&!b.disabled&&getComputedStyle(b).display!=='none'){b.click();return true;}return false;}
 function flash(){cur.classList.remove('click');void cur.offsetWidth;cur.classList.add('click');}
 function stNow(){return window.atlas?atlas.state().state:'';}
-function onPose(prev,t){fromPose=prev;if(prev==='pinch'&&pose!=='pinch')endPan();
+function onPose(prev,t){fromPose=prev;if(prev==='open'&&pose!=='open')endPan();
   if(pose!=='open'){zooming=false;zoomRef=null;zoomDir(0);}zoomStill=0;
   log('pose',prev,'->',pose);}
 function whole(t,spread){const st=stNow(),calm=t-lastPose>T.poseLock&&t-seenAt>T.settle;
@@ -961,21 +990,11 @@ function whole(t,spread){const st=stNow(),calm=t-lastPose>T.poseLock&&t-seenAt>T
   // open hand -> fist: close the book
   if(pose==='fist'&&!fired&&fromPose==='open'&&t-poseSince>=T.closeHold&&poseSince-lastOpen<T.switchMs&&(st==='map'||st==='station')&&calm&&!zoomedAt(t)){fired=true;
     if(press('bFold')){stats.closes++;lastPose=t;flash();tip(['Closing the map','合上地图'],1600);}}
-  // pinch (thumb + index) and move: grab and drag the map; let go to drop it. An open hand never drags.
-  if(pose==='pinch'&&!panning&&poseSince>lastPose&&t-poseSince>=T.panWait&&(st==='map'||st==='station')){const c=cv3();
+  // open hand held still for a moment, then moved: drag the whole map
+  if(pose==='open'&&!twoOn&&!panning&&poseSince>lastPose&&t-poseSince>=T.panWait&&(st==='map'||st==='station')){const c=cv3();
     if(c){panning=true;panX=sx;panY=sy;fire('pointerdown',c,sx,sy,1);cur.classList.add('down');}}
-  // open palm held still, then pushed towards the camera = zoom in, pulled back = zoom out
-  if(pose==='open'&&(st==='map'||st==='station')){
-    if(!zooming){if(!zoomStill||Math.hypot(rawPX-zoomLX,rawPY-zoomLY)>50){zoomStill=t;zoomLX=rawPX;zoomLY=rawPY;}
-      if(t-zoomStill>=T.zoomWait&&t-poseSince>=T.zoomWait){zooming=true;zoomRef=zoomSize;}}
-    else if(Math.hypot(rawPX-zoomLX,rawPY-zoomLY)>140){zooming=false;zoomStill=0;zoomDir(0);} // the hand moved away sideways: that is not a zoom
-    else{// like a joystick: keep the palm closer and it keeps zooming in, further and it keeps zooming out; back to where it started stops
-      const r=zoomSize/zoomRef,d=Math.abs(r-1),every=d>T.zoomDead*2.5?1:d>T.zoomDead*1.6?2:3;
-      if(d>T.zoomDead){zoomN++;if(zoomN%every===0)wheel(r>1?-100:100);lastZoom=t;zoomDir(r>1?1:-1);}else zoomDir(0);}}
-  else zoomDir(0);}
-let zoomN=0,zoomShown=0;
-function zoomDir(k){if(k===zoomShown)return;zoomShown=k;cur.classList.toggle('zin',k>0);cur.classList.toggle('zout',k<0);
-  if(k)tip(k>0?['Zooming in · move the palm back to stop','放大中 · 手掌回到原位就停']:['Zooming out · move the palm back to stop','缩小中 · 手掌回到原位就停'],1200);}
+}
+function zoomDir(){}
 let lastZoom=-1e9;const zoomedAt=t=>t-lastZoom<1500; // a hand that was just zooming and closes into a fist is not closing the book
 function wheel(dy){const c=cv3();if(!c)return;c.dispatchEvent(new WheelEvent('wheel',{deltaY:dy,deltaMode:0,clientX:sx,clientY:sy,bubbles:true,cancelable:true,view:window}));stats.zooms++;}
 function endPan(){if(!panning)return;panning=false;cur.classList.remove('down');const c=cv3();
@@ -1000,7 +1019,7 @@ function dwell(t,hot,el,b){
   if(b)b.click();else if(el&&el.tagName==='CANVAS'){fire('pointerdown',el,sx,sy,1);fire('pointerup',el,sx,sy,0);}else return;
   lastClick=t;stats.clicks++;stats.dwells++;dwellLock=[sx,sy];flash();log('dwell',b?b.id:el.tagName,Math.round(sx),Math.round(sy));}
 function cancelPress(el){window.dispatchEvent(new PointerEvent('pointercancel',{pointerId:1,pointerType:'mouse'}));fire('pointerup',el||document,sx,sy,0);}
-function release(){endPan();zoomDir(0);zooming=false;tapAt=0;cur.classList.remove('down');}
+function release(){endPan();if(twoOn)twoEnd(performance.now());zooming=false;tapAt=0;cur.classList.remove('down');}
 function lose(show){if(!have&&!show)return;if(have)stats.lost++;have=false;release();pose='none';rawPose='';rawN=0;lostAt=0;cur.classList.remove('on','live','lock');
   if(hoverEl){hoverEl.classList.remove('gx-hover');hoverEl=null;}
   if(show&&mode==='hand'&&running){showGuide();log('hand lost');}}
@@ -1011,7 +1030,7 @@ new MutationObserver(()=>{const z=document.documentElement.lang.startsWith('zh')
 // The choice appears once the loading screen has finished, so the language switch is already usable.
 const loader=$('loader');if(loader&&!loader.classList.contains('done')){choice.classList.add('wait');
   new MutationObserver((m,o)=>{if(loader.classList.contains('done')){choice.classList.remove('wait');o.disconnect();}}).observe(loader,{attributes:true,attributeFilter:['class']});}
-const gx=window.gesture={get mode(){return mode},feed,stats,T,delegate:null,state:()=>({mode,have,pose:have?gx.pose:null,tapping:!!tapAt,panning,zooming,x:sx,y:sy,fps,detMs,running,delegate:gx.delegate,...stats}),useHand,useMouse};
+const gx=window.gesture={get mode(){return mode},feed:(h,t)=>frame(h?[h]:[],t),frame,stats,T,delegate:null,state:()=>({mode,have,pose:have?gx.pose:null,tapping:!!tapAt,panning,zooming,x:sx,y:sy,fps,detMs,running,delegate:gx.delegate,...stats}),useHand,useMouse};
 })();
 </script>
 
