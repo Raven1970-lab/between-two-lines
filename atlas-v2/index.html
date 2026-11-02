@@ -856,7 +856,7 @@ retry.onclick=()=>useHand();
 go.onclick=()=>{intro.classList.remove('on');showGuide();};
 modeBtn.onclick=()=>{stopCam();mode=null;recBtn.classList.remove('on');intro.classList.remove('on');modeBtn.classList.remove('on');choice.classList.remove('gone');};
 function useMouse(){stopCam();mode='mouse';recBtn.classList.remove('on');if(window.atlas&&atlas.setHandMode)atlas.setHandMode(false);choice.classList.add('gone');intro.classList.remove('on');modeBtn.classList.add('on');untip();log('mode mouse');}
-async function useHand(){mode='hand';recBtn.classList.add('on');recLabel();if(window.atlas&&atlas.setHandMode)atlas.setHandMode(true);choice.classList.add('gone');intro.classList.add('on');modeBtn.classList.add('on');go.disabled=true;retry.style.display='none';
+async function useHand(){mode='hand';if(Q.has('debug')){recBtn.classList.add('on');recLabel();} // the record button only shows with ?debug in the addressif(window.atlas&&atlas.setHandMode)atlas.setHandMode(true);choice.classList.add('gone');intro.classList.add('on');modeBtn.classList.add('on');go.disabled=true;retry.style.display='none';
   setSay(['Starting the camera…','正在打开摄像头…']);log('mode hand');
   if(TEST){setSay(['Test input ready','测试输入已就绪']);go.disabled=false;running=true;return;}
   try{
