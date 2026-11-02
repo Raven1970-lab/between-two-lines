@@ -672,9 +672,10 @@ if(atlasStopped)return;
 computeReached();drawMap();mapTex.needsUpdate=true;
 let zS=null;
 function zoomStart(){if(anim||!(state==='map'||state==='station')||!controls.enabled)return false;zS={d:camera.position.distanceTo(controls.target)};controls.enableDamping=false;return true;}
-function zoomSet(r){if(!zS||anim){zS=null;controls.enableDamping=true;return;}const dir=camera.position.clone().sub(controls.target);dir.setLength(clamp(zS.d/r,controls.minDistance,controls.maxDistance));camera.position.copy(controls.target).add(dir);}
-function zoomEnd(){if(zS){zS=null;controls.enableDamping=true;}}
-window.atlas={zoomStart,zoomSet,zoomEnd,renderHealth:()=>({stopped:atlasStopped,ready:atlasReady,scheduled:!!atlasRaf,textUploads:textUploadCount,textWidth:tc.width,textHeight:tc.height,bufferWidth:cv.width,bufferHeight:cv.height}),screenOf:k=>{const v=spotW(k).project(camera);return [(v.x+1)/2*innerWidth,(1-v.y)/2*innerHeight];},goTo,next,overview,finale,startOver,state:()=>({state,active,language:lang,camera:camera.position.toArray(),target:controls.target.toArray(),pointers:pointers.size,multi,progress,next:nextKey(),foldF,trainElapsed,trainX,trainZ,trainRunning,audioState:audioCtx&&audioCtx.state,audioOK,flatFragments:flatPieces.length,visited:[...visited],seen:[...seen],arrows:arrows.length,arrowAppearance:arrows.map(a=>({color:a.mat.color.getHexString(),opacity:a.mat.opacity})),goldOn,pieces:pieces.map(p=>({key:p.key,img:p.cfg.img,worldX:p.g.getWorldPosition(new THREE.Vector3()).x,width:p.w,layerY:p.g.position.y,frame:p.u.uF.value,rot:p.rot,visible:p.g.visible,opacity:p.u.uFade.value}))})};
+function zoomSet(r){if(!zS||anim){zoomEnd();return;}const dir=camera.position.clone().sub(controls.target);dir.setLength(clamp(zS.d/r,controls.minDistance,controls.maxDistance));camera.position.copy(controls.target).add(dir);}
+function zoomEnd(){if(zS){zS=null;controls.enableDamping=!handMode;}}
+let handMode=false;function setHandMode(on){handMode=on;controls.enableDamping=!on;}
+window.atlas={zoomStart,zoomSet,zoomEnd,setHandMode,renderHealth:()=>({stopped:atlasStopped,ready:atlasReady,scheduled:!!atlasRaf,textUploads:textUploadCount,textWidth:tc.width,textHeight:tc.height,bufferWidth:cv.width,bufferHeight:cv.height}),screenOf:k=>{const v=spotW(k).project(camera);return [(v.x+1)/2*innerWidth,(1-v.y)/2*innerHeight];},goTo,next,overview,finale,startOver,state:()=>({state,active,language:lang,camera:camera.position.toArray(),target:controls.target.toArray(),pointers:pointers.size,multi,progress,next:nextKey(),foldF,trainElapsed,trainX,trainZ,trainRunning,audioState:audioCtx&&audioCtx.state,audioOK,flatFragments:flatPieces.length,visited:[...visited],seen:[...seen],arrows:arrows.length,arrowAppearance:arrows.map(a=>({color:a.mat.color.getHexString(),opacity:a.mat.opacity})),goldOn,pieces:pieces.map(p=>({key:p.key,img:p.cfg.img,worldX:p.g.getWorldPosition(new THREE.Vector3()).x,width:p.w,layerY:p.g.position.y,frame:p.u.uF.value,rot:p.rot,visible:p.g.visible,opacity:p.u.uFade.value}))})};
 state='folded';setBusy();document.getElementById('bStart').textContent='Start';setCaption('A folded map lies on the table.');showText('cover');
 document.getElementById('langEN').disabled=false;document.getElementById('langZH').disabled=false;setLanguage(lang);
 atlasReady=true;if(!atlasStopped&&!document.hidden)atlasRaf=requestAnimationFrame(loop);
@@ -839,8 +840,8 @@ $('gxUseMouse').onclick=()=>useMouse();
 retry.onclick=()=>useHand();
 go.onclick=()=>{intro.classList.remove('on');showGuide();};
 modeBtn.onclick=()=>{stopCam();mode=null;intro.classList.remove('on');modeBtn.classList.remove('on');choice.classList.remove('gone');};
-function useMouse(){stopCam();mode='mouse';choice.classList.add('gone');intro.classList.remove('on');modeBtn.classList.add('on');untip();log('mode mouse');}
-async function useHand(){mode='hand';choice.classList.add('gone');intro.classList.add('on');modeBtn.classList.add('on');go.disabled=true;retry.style.display='none';
+function useMouse(){stopCam();mode='mouse';if(window.atlas&&atlas.setHandMode)atlas.setHandMode(false);choice.classList.add('gone');intro.classList.remove('on');modeBtn.classList.add('on');untip();log('mode mouse');}
+async function useHand(){mode='hand';if(window.atlas&&atlas.setHandMode)atlas.setHandMode(true);choice.classList.add('gone');intro.classList.add('on');modeBtn.classList.add('on');go.disabled=true;retry.style.display='none';
   setSay(['Starting the camera…','正在打开摄像头…']);log('mode hand');
   if(TEST){setSay(['Test input ready','测试输入已就绪']);go.disabled=false;running=true;return;}
   try{
@@ -872,26 +873,32 @@ function loop(){if(!running)return;raf=requestAnimationFrame(loop);
   if(video.readyState<2||video.currentTime===lastVT)return;lastVT=video.currentTime;
   const t0=performance.now();let r;try{r=landmarker.detectForVideo(video,t0);}catch(e){console.error(e);return;}
   detMs=detMs*.9+(performance.now()-t0)*.1;
-  frame((r&&r.landmarks)||[],t0);}
+  frame((r&&r.landmarks)||[],t0,(r&&(r.handedness||r.handednesses))||[]);}
 /* ---------- two hands: both open, pull apart = zoom in, bring together = zoom out ---------- */
 // The picture follows the distance between the hands directly (twice as far apart = twice as close), so it stops the moment the hands stop.
-let twoOn=false,twoOff=0,twoN=0,twoD0=0,primW=null;const fD={t:null};
+let twoGap=0,twoOn=false,twoOff=0,twoN=0,twoD0=0,primW=null;const fD={t:null,c:.6};
 function openish(h){const w=h[0];let n=0;for(const [tp,pp] of [[8,6],[12,10],[16,14],[20,18]])if(dw(w,h[tp])>dw(w,h[pp])*1.1)n++;return n>=3;}
-function frame(hs,t){t=t||performance.now();
+function frame(hs,t,hd){t=t||performance.now();hd=hd||[];
+  // two detections must really be two hands: different left/right, apart from each other, about the same size (a doubled or ghost detection is not)
+  if(hs.length>1){const side=k=>hd[k]&&hd[k][0]&&hd[k][0].categoryName,pa=dw(hs[0][0],hs[0][9]),pb=dw(hs[1][0],hs[1][9]);
+    const real=(!side(0)||side(0)!==side(1))&&dw(hs[0][9],hs[1][9])>Math.max(pa,pb)*1.5&&Math.min(pa,pb)/Math.max(pa,pb)>.6;
+    if(!real){const keep=primW&&Math.hypot(hs[1][0].x-primW.x,hs[1][0].y-primW.y)<Math.hypot(hs[0][0].x-primW.x,hs[0][0].y-primW.y)?1:0;hs=[hs[keep]];}}
   let h=hs[0]||null;
   if(hs.length>1&&primW){const d=x=>Math.hypot(x[0].x-primW.x,x[0].y-primW.y);h=d(hs[0])<=d(hs[1])?hs[0]:hs[1];} // the ring stays on the hand it was on
   if(h)primW={x:h[0].x,y:h[0].y};
   draw(hs);
   const both=hs.length>1&&openish(hs[0])&&openish(hs[1]);
-  twoN=both?twoN+1:0;
+  twoN=both?twoN+1:0;twoOff=both?0:twoOff+1;
   const st=stNow();
-  if(!twoOn&&twoN>=T.stableFrames&&(st==='map'||st==='station')){
-    endPan();if(window.atlas&&atlas.zoomStart()){twoOn=true;fD.t=null;twoD0=0;cur.classList.add('down');tip(['Two hands: pull apart to zoom in, together to zoom out','双手：拉开放大，靠拢缩小'],1800);log('two-hand zoom');}}
-  twoOff=both?0:twoOff+1;
-  if(twoOn&&(hs.length<2||twoOff>8))twoEnd(t);
-  if(twoOn){const asp=(video.videoWidth||4)/(video.videoHeight||3),a=hs[0][9],b=hs[1][9];
-    const raw=Math.hypot((a.x-b.x)*asp,a.y-b.y),d=euro(fD,raw,t);if(!twoD0)twoD0=d;
-    const r=d/twoD0;atlas.zoomSet(Math.abs(r-1)<.03?1:r);lastZoom=t;stats.zooms++;
+  if(!twoOn&&twoN>=6&&(st==='map'||st==='station')){
+    endPan();if(window.atlas&&atlas.zoomStart()){twoOn=true;fD.t=null;twoD0=0;twoGap=0;cur.classList.add('down');tip(['Two hands: pull apart to zoom in, together to zoom out','双手：拉开放大，靠拢缩小'],1800);log('two-hand zoom');}}
+  if(twoOn){
+    if(!both){if(!twoGap)twoGap=t;if(t-twoGap>400)twoEnd(t);return;} // a hand missed for a few frames: hold still, do not restart
+    twoGap=0;
+    const asp=(video.videoWidth||4)/(video.videoHeight||3),a=hs[0][9],b=hs[1][9];
+    const raw=Math.hypot((a.x-b.x)*asp,a.y-b.y),d=fD.t==null?(fD.t=t,fD.x=raw):(fD.x+=(raw-fD.x)*.4);if(!twoD0)twoD0=d;
+    let r=d/twoD0;r=Math.abs(r-1)<.06?1:r>1?r-.06:r+.06; // small wobble of the arms does nothing
+    atlas.zoomSet(clamp(r,.25,4));lastZoom=t;stats.zooms++;
     sx=clamp((1-(a.x+b.x)/2-T.rx0)/(T.rx1-T.rx0),0,1)*innerWidth;sy=clamp(((a.y+b.y)/2-T.ry0)/(T.ry1-T.ry0),0,1)*innerHeight;
     cur.style.transform='translate('+sx+'px,'+sy+'px)';lostAt=0;return;}
   feed(h,t);}
@@ -924,7 +931,7 @@ function posture(h,palm){const w=h[0];let ext=0,cur=0,straight=0;
   // a loose finger while pointing is still pointing: no flicker to 'other', so the ring does not jump to the palm
   if(p==='other'&&pose==='point'&&dw(w,h[8])>dw(w,h[6])*1.05)p='point';
   return [p,spread];}
-function feed(h,t){t=t||performance.now();stats.frames++;fpsN++;if(t-fpsT>1000){fps=fpsN*1000/(t-fpsT);fpsN=0;fpsT=t;const pn={point:['pointing','指'],open:['open hand','张开'],fist:['fist','握拳'],pinch:['pinch','捏住'],other:['…','…']}[pose]||['',''];const zs=twoOn?[' · two-hand zoom',' · 双手缩放']:['',''];camP=[(have?'Hand: '+pn[0]+zs[0]:'No hand')+'  '+fps.toFixed(0)+' fps · v4',(have?'手势：'+pn[1]+zs[1]:'未识别到手')+'  '+fps.toFixed(0)+' fps · v4'];camT.textContent=L(camP);}
+function feed(h,t){t=t||performance.now();stats.frames++;fpsN++;if(t-fpsT>1000){fps=fpsN*1000/(t-fpsT);fpsN=0;fpsT=t;const pn={point:['pointing','指'],open:['open hand','张开'],fist:['fist','握拳'],pinch:['pinch','捏住'],other:['…','…']}[pose]||['',''];const zs=twoOn?[' · two-hand zoom',' · 双手缩放']:['',''];camP=[(have?'Hand: '+pn[0]+zs[0]:'No hand')+'  '+fps.toFixed(0)+' fps · v5',(have?'手势：'+pn[1]+zs[1]:'未识别到手')+'  '+fps.toFixed(0)+' fps · v5'];camT.textContent=L(camP);}
   if(!h){gx.pose=null;if(have&&!lostAt)lostAt=t;if(have&&t-lostAt>T.lostMs)lose(true);return;}
   lostAt=0;if(!have){have=true;seenAt=t;fX.t=fY.t=null;lastTX=null;offX=offY=0;srcKind='';rawPose='';rawN=0;pose='none';tapAt=0;reachBase=0;cur.classList.add('on');untip();log('hand found');}
   const w0=h[0],m9=h[9],palm=dw(w0,m9)||1e-3;
@@ -938,7 +945,7 @@ function feed(h,t){t=t||performance.now();stats.frames++;fpsN++;if(t-fpsT>1000){
   const nx=1-src.x,ny=src.y; // mirror: the screen behaves like a mirror
   let tx=clamp((nx-T.rx0)/(T.rx1-T.rx0),0,1)*innerWidth,ty=clamp((ny-T.ry0)/(T.ry1-T.ry0),0,1)*innerHeight;
   // a single bad frame from the tracker can throw the point across the screen: ignore a sudden jump unless it is still there 3 frames later
-  if(lastTX!=null&&Math.hypot(tx-lastTX,ty-lastTY)>Math.min(innerWidth,innerHeight)*.18&&kind===srcKind&&jumpN<3){jumpN++;tx=lastTX;ty=lastTY;}else{jumpN=0;lastTX=tx;lastTY=ty;}
+  if(lastTX!=null&&Math.hypot(tx-lastTX,ty-lastTY)>Math.min(innerWidth,innerHeight)*.45&&kind===srcKind&&jumpN<1){jumpN++;tx=lastTX;ty=lastTY;}else{jumpN=0;lastTX=tx;lastTY=ty;}
   // when the tracked point changes (fingertip <-> palm), glide over instead of jumping
   if(kind!==srcKind){if(srcKind&&fX.t!=null){offX=fX.x-tx;offY=fY.x-ty;}srcKind=kind;}
   offX*=.82;offY*=.82;tx+=offX;ty+=offY;
