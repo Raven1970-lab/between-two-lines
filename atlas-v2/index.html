@@ -551,11 +551,14 @@ function stationView(k){const sp=SPOTS[k],b=spotW(k);let mn=1e9,mx=-1e9,top=0.3;
 const span=Math.max(0.6,mx-mn),mid=(mn+mx)/2,asp=Math.max(1,camera.aspect),Tn=Math.tan(20*PI/180);const D=Math.max(1.5,span/(0.92*Tn*asp),top*2.6),Wv=2*Tn*D*asp;
 const look=b.clone().add(new THREE.Vector3(mid+0.2*Wv,top*0.5,0));const dir=new THREE.Vector3(0.02,0.42,1).normalize();return [look.clone().add(dir.multiplyScalar(D)),look];}
 const isOpenSpot=k=>{const sp=SPOTS[k];if(goldOn)return true;if(sp.road)return visited.has('entrance')&&reachedX>=sp.p[0];return visited.has(k)||k===nextKey();};
+// A stop already connected on the route (or a road sign already read) cannot be picked again; only the one standing now can be laid down.
+const wasLinked=k=>!goldOn&&k!==active&&(visited.has(k)||(SPOTS[k].road&&seen.has(k)));
+const canPick=k=>isOpenSpot(k)&&!wasLinked(k);
 function unlockAudio(){if(audioCtx){audioCtx.resume().then(()=>{audioOK=true;}).catch(()=>{audioOK=false;});}else audioReady.then(()=>{if(audioCtx)audioCtx.resume().then(()=>{audioOK=true;});});}
 function setBusy(){document.getElementById('bStart').classList.toggle('busy',!(state==='folded'||state==='end'));}
 function hint(t){setCaption(t);bounceT=now();}
 function visit(k){if(k!==nextKey())return;if(progress>0)addArrow(ROUTE[progress-1],k);visited.add(k);progress++;computeReached();drawMap();mapTex.needsUpdate=true;}
-function goTo(k){if(state==='unfolding'){pendingAct=()=>goTo(k);return;}if(!(state==='map'||state==='station'||state==='moving'))return;if(!isOpenSpot(k)){const sp=SPOTS[k];hint(sp.road?'The road has not reached this sign yet. Next stop: '+nameOf(nextKey())+'.':'Locked. Follow the route — next stop: '+nameOf(nextKey())+'.');return;}
+function goTo(k){if(state==='unfolding'){pendingAct=()=>goTo(k);return;}if(!(state==='map'||state==='station'||state==='moving'))return;if(wasLinked(k)){hint('Already visited. Next stop: '+nameOf(nextKey())+'.');return;}if(!isOpenSpot(k)){const sp=SPOTS[k];hint(sp.road?'The road has not reached this sign yet. Next stop: '+nameOf(nextKey())+'.':'Locked. Follow the route — next stop: '+nameOf(nextKey())+'.');return;}
 if(k==='feather'){finale();return;}
 if(k===active&&state==='station'){playNote();overview();return;}
 if(SPOTS[k].road){if(!seen.has(k)&&progress>0)addBranch(ROUTE[progress-1],k);seen.add(k);}
@@ -582,7 +585,7 @@ const pickPixels=new WeakMap();
 function opaqueHit(hit,p){if(!hit.uv)return false;const canvas=p.u.map.value.image;let pixels=pickPixels.get(canvas);if(!pixels){pixels=canvas.getContext('2d').getImageData(0,0,canvas.width,canvas.height);pickPixels.set(canvas,pixels);}
 const x=Math.floor(clamp((hit.uv.x+p.u.uF.value)/p.fr,0,.999999)*pixels.width),y=Math.floor(clamp(1-hit.uv.y,0,.999999)*pixels.height);return pixels.data[(y*pixels.width+x)*4+3]>20;}
 function pick(e){mv.x=e.clientX/innerWidth*2-1;mv.y=-e.clientY/innerHeight*2+1;ray.setFromCamera(mv,camera);
-const hs=ray.intersectObjects(pieces.map(p=>p.front));let firstK=null;for(const hp of hs){const pc=pieces.find(p=>p.front===hp.object);if(!opaqueHit(hp,pc))continue;if(!firstK)firstK=pc.key;if(isOpenSpot(pc.key))return pc.key;}
+const hs=ray.intersectObjects(pieces.map(p=>p.front));let firstK=null;for(const hp of hs){const pc=pieces.find(p=>p.front===hp.object);if(!opaqueHit(hp,pc))continue;if(!firstK)firstK=pc.key;if(canPick(pc.key))return pc.key;}
 const hit=ray.intersectObjects(PANELS)[0];if(!hit)return firstK;const cx=(hit.point.x+4.4)/8.8*MW,cy=(hit.point.z+1.5)/3*MH;let best=null,bd=110;Object.keys(SPOTS).forEach(k=>{const p=SPOTS[k].p;const d=Math.hypot(cx-p[0],cy-p[1]);if(d<bd){bd=d;best=k;}});return best||firstK;}
 const pointers=new Set();let multi=false,dragged=false;
 cv.addEventListener('pointerdown',e=>{
@@ -599,7 +602,7 @@ if(!wasTracked)return;if(multi){if(!pointers.size)multi=false;down=null;return;}
 const dd=Math.hypot(e.clientX-down[0],e.clientY-down[1]);down=null;
 if(e.button!==0||dragged||dd>6||anim)return;
 if(state==='folded'||state==='end'){startOpen();return;}if(!(state==='map'||state==='station'))return;const k=pick(e);if(k)goTo(k);});
-cv.addEventListener('pointermove',e=>{const t=now();if(t-hoverT<0.08||foldF>0.01||!(state==='map'||state==='station'))return;hoverT=t;const k=pick(e);cv.style.cursor=k&&isOpenSpot(k)?'pointer':(k?'not-allowed':'grab');});
+cv.addEventListener('pointermove',e=>{const t=now();if(t-hoverT<0.08||foldF>0.01||!(state==='map'||state==='station'))return;hoverT=t;const k=pick(e);cv.style.cursor=k&&canPick(k)?'pointer':(k?'not-allowed':'grab');});
 /* ---------- loop ---------- */
 let keeperN=-1,lastCall=0,callT=-9,lastT=now();
 function loop(){if(atlasStopped||document.hidden)return;atlasRaf=requestAnimationFrame(loop);const t=now();const dt=Math.min(0.05,t-lastT);lastT=t;
@@ -711,6 +714,7 @@ setLoad(1,_zh?'准备好了':'Ready');setTimeout(()=>document.getElementById('lo
 #gxIntro .btn.alt{background:transparent;border-color:rgba(226,216,193,.36);color:#e8dfcd;font-size:15px}
 #gxIntro .btn.gx-hover,#gxIntro .btn:hover:not([disabled]){box-shadow:0 0 0 3px rgba(226,178,60,.55)}
 #gxIntro .priv{margin:18px 0 0;font-size:12px;letter-spacing:.02em;color:#8f8676}
+#gxCursor.zin::after,#gxCursor.zout::after{position:absolute;left:0;top:0;width:54px;line-height:54px;text-align:center;font:600 26px sans-serif;color:#ffcc3d}#gxCursor.zin::after{content:'+'}#gxCursor.zout::after{content:'−'}
 #gxCursor{position:fixed;left:0;top:0;z-index:9999;width:54px;height:54px;margin:-27px 0 0 -27px;pointer-events:none;opacity:0;transition:opacity .25s}
 #gxCursor.on{opacity:1}
 #gxCursor .r{position:absolute;inset:0;border-radius:50%;border:3px solid #f3e7c8;box-shadow:0 0 0 2px #0007,0 2px 10px #0008}
@@ -795,7 +799,7 @@ const T={ // tuning
   dwellMs:800,dwellR:40,              // pointing still on a gold ring or button for 0.8 s (within 40 px) = click
   pinchOn:.30,pinchOff:.45,panWait:150, // thumb + index tip closer than .30 palm = pinch (released above .45); a pinch held 0.15 s grabs the map
   closeHold:650,                      // open hand -> fist must hold the fist this long before the book closes
-  zoomWait:450,zoomDead:.10,zoomStep:.07}; // open palm held still, then pushed towards / pulled from the camera: zoom after a 10% change in palm size // fingertip-to-thumb spread / palm size: together < .55; one zoom step per .08
+  zoomWait:350,zoomDead:.07}; // open palm held still, then pushed towards / pulled from the camera: zoom after a 10% change in palm size // fingertip-to-thumb spread / palm size: together < .55; one zoom step per .08
 let mode=null,lm=null,stream=null,running=false,lastVT=-1,raf=0,landmarker=null,modelP=null;
 let sx=innerWidth/2,sy=innerHeight/2,have=false,seenAt=0,lostAt=0,lastClick=0,hoverEl=null,hist=[],fps=0,fpsN=0,fpsT=0,detMs=0;
 let rawPose='',rawN=0,pose='none',fromPose='none',poseSince=0,fired=false,lastFist=-1e9,lastOpen=-1e9,lastPose=-1e9;
@@ -891,9 +895,9 @@ function posture(h,palm){const w=h[0];let ext=0,cur=0,straight=0;
   // a loose finger while pointing is still pointing: no flicker to 'other', so the ring does not jump to the palm
   if(p==='other'&&pose==='point'&&dw(w,h[8])>dw(w,h[6])*1.05)p='point';
   return [p,spread];}
-function feed(h,t){t=t||performance.now();stats.frames++;fpsN++;if(t-fpsT>1000){fps=fpsN*1000/(t-fpsT);fpsN=0;fpsT=t;const pn={point:['pointing','指'],open:['open hand','张开'],fist:['fist','握拳'],pinch:['pinch','捏住'],other:['…','…']}[pose]||['',''];camP=[(have?'Hand: '+pn[0]:'No hand')+'  '+fps.toFixed(0)+' fps',(have?'手势：'+pn[1]:'未识别到手')+'  '+fps.toFixed(0)+' fps'];camT.textContent=L(camP);}
+function feed(h,t){t=t||performance.now();stats.frames++;fpsN++;if(t-fpsT>1000){fps=fpsN*1000/(t-fpsT);fpsN=0;fpsT=t;const pn={point:['pointing','指'],open:['open hand','张开'],fist:['fist','握拳'],pinch:['pinch','捏住'],other:['…','…']}[pose]||['',''];const zs=zooming?[' · zoom ready',' · 可缩放']:['',''];camP=[(have?'Hand: '+pn[0]+zs[0]:'No hand')+'  '+fps.toFixed(0)+' fps · v3',(have?'手势：'+pn[1]+zs[1]:'未识别到手')+'  '+fps.toFixed(0)+' fps · v3'];camT.textContent=L(camP);}
   if(!h){gx.pose=null;if(have&&!lostAt)lostAt=t;if(have&&t-lostAt>T.lostMs)lose(true);return;}
-  lostAt=0;if(!have){have=true;seenAt=t;fX.t=fY.t=null;rawPose='';rawN=0;pose='none';tapAt=0;reachBase=0;cur.classList.add('on');untip();log('hand found');}
+  lostAt=0;if(!have){have=true;seenAt=t;fX.t=fY.t=null;lastTX=null;offX=offY=0;srcKind='';rawPose='';rawN=0;pose='none';tapAt=0;reachBase=0;cur.classList.add('on');untip();log('hand found');}
   const w0=h[0],m9=h[9],palm=dw(w0,m9)||1e-3;
   const [p,spread]=posture(h,palm);
   if(p===rawPose)rawN++;else{rawPose=p;rawN=1;}
@@ -904,6 +908,8 @@ function feed(h,t){t=t||performance.now();stats.frames++;fpsN++;if(t-fpsT>1000){
   const src=kind==='tip'?h[8]:kind==='pinch'?{x:(h[4].x+h[8].x)/2,y:(h[4].y+h[8].y)/2}:{x:(h[0].x+h[5].x+h[9].x+h[13].x+h[17].x)/5,y:(h[0].y+h[5].y+h[9].y+h[13].y+h[17].y)/5};
   const nx=1-src.x,ny=src.y; // mirror: the screen behaves like a mirror
   let tx=clamp((nx-T.rx0)/(T.rx1-T.rx0),0,1)*innerWidth,ty=clamp((ny-T.ry0)/(T.ry1-T.ry0),0,1)*innerHeight;
+  // a single bad frame from the tracker can throw the point across the screen: ignore a sudden jump unless it is still there 3 frames later
+  if(lastTX!=null&&Math.hypot(tx-lastTX,ty-lastTY)>Math.min(innerWidth,innerHeight)*.18&&kind===srcKind&&jumpN<3){jumpN++;tx=lastTX;ty=lastTY;}else{jumpN=0;lastTX=tx;lastTY=ty;}
   // when the tracked point changes (fingertip <-> palm), glide over instead of jumping
   if(kind!==srcKind){if(srcKind&&fX.t!=null){offX=fX.x-tx;offY=fY.x-ty;}srcKind=kind;}
   offX*=.82;offY*=.82;tx+=offX;ty+=offY;
@@ -917,7 +923,7 @@ function feed(h,t){t=t||performance.now();stats.frames++;fpsN++;if(t-fpsT>1000){
 // bend of the index finger in 3D: 0° when straight
 function bendOf(h){const u=[h[6].x-h[5].x,h[6].y-h[5].y,h[6].z-h[5].z],v=[h[8].x-h[6].x,h[8].y-h[6].y,h[8].z-h[6].z];
   const d=u[0]*v[0]+u[1]*v[1]+u[2]*v[2],n=Math.hypot(...u)*Math.hypot(...v)||1e-6;return Math.acos(clamp(d/n,-1,1))*180/Math.PI;}
-let bendBase=0,srcKind='',offX=0,offY=0,zoomSize=0,zoomStill=0,zoomLX=0,zoomLY=0,rawPX=0,rawPY=0;
+let lastTX=null,lastTY=null,jumpN=0,bendBase=0,srcKind='',offX=0,offY=0,zoomSize=0,zoomStill=0,zoomLX=0,zoomLY=0,rawPX=0,rawPY=0;
 function tapCheck(h,t,p){const reach=dw(h[0],h[8])/(dw(h[0],h[5])||1e-3),bend=bendOf(h);
   // armed whenever the index is the pointing finger, even if the other fingers are a little loose
   const armed=pose==='point'||(pose==='other'&&dw(h[0],h[8])>dw(h[0],h[6])*1.1&&dw(h[0],h[12])<dw(h[0],h[10])*1.1);
@@ -944,7 +950,7 @@ function press(id){const b=$(id);if(b&&!b.disabled&&getComputedStyle(b).display!
 function flash(){cur.classList.remove('click');void cur.offsetWidth;cur.classList.add('click');}
 function stNow(){return window.atlas?atlas.state().state:'';}
 function onPose(prev,t){fromPose=prev;if(prev==='pinch'&&pose!=='pinch')endPan();
-  if(pose!=='open'){zooming=false;zoomRef=null;}zoomStill=0;
+  if(pose!=='open'){zooming=false;zoomRef=null;zoomDir(0);}zoomStill=0;
   log('pose',prev,'->',pose);}
 function whole(t,spread){const st=stNow(),calm=t-lastPose>T.poseLock&&t-seenAt>T.settle;
   if(pose==='fist'&&t-poseSince>=T.holdMin)lastFist=t;
@@ -962,9 +968,14 @@ function whole(t,spread){const st=stNow(),calm=t-lastPose>T.poseLock&&t-seenAt>T
   if(pose==='open'&&(st==='map'||st==='station')){
     if(!zooming){if(!zoomStill||Math.hypot(rawPX-zoomLX,rawPY-zoomLY)>50){zoomStill=t;zoomLX=rawPX;zoomLY=rawPY;}
       if(t-zoomStill>=T.zoomWait&&t-poseSince>=T.zoomWait){zooming=true;zoomRef=zoomSize;}}
-    else{const r=zoomSize/zoomRef;let n=0;
-      if(r>1+T.zoomDead){while(zoomSize/zoomRef>1+T.zoomDead&&n<3){wheel(-100);zoomRef*=1+T.zoomStep;n++;}lastZoom=t;}
-      else if(r<1-T.zoomDead){while(zoomSize/zoomRef<1-T.zoomDead&&n<3){wheel(100);zoomRef*=1-T.zoomStep;n++;}lastZoom=t;}}}}
+    else if(Math.hypot(rawPX-zoomLX,rawPY-zoomLY)>140){zooming=false;zoomStill=0;zoomDir(0);} // the hand moved away sideways: that is not a zoom
+    else{// like a joystick: keep the palm closer and it keeps zooming in, further and it keeps zooming out; back to where it started stops
+      const r=zoomSize/zoomRef,d=Math.abs(r-1),every=d>T.zoomDead*2.5?1:d>T.zoomDead*1.6?2:3;
+      if(d>T.zoomDead){zoomN++;if(zoomN%every===0)wheel(r>1?-100:100);lastZoom=t;zoomDir(r>1?1:-1);}else zoomDir(0);}}
+  else zoomDir(0);}
+let zoomN=0,zoomShown=0;
+function zoomDir(k){if(k===zoomShown)return;zoomShown=k;cur.classList.toggle('zin',k>0);cur.classList.toggle('zout',k<0);
+  if(k)tip(k>0?['Zooming in · move the palm back to stop','放大中 · 手掌回到原位就停']:['Zooming out · move the palm back to stop','缩小中 · 手掌回到原位就停'],1200);}
 let lastZoom=-1e9;const zoomedAt=t=>t-lastZoom<1500; // a hand that was just zooming and closes into a fist is not closing the book
 function wheel(dy){const c=cv3();if(!c)return;c.dispatchEvent(new WheelEvent('wheel',{deltaY:dy,deltaMode:0,clientX:sx,clientY:sy,bubbles:true,cancelable:true,view:window}));stats.zooms++;}
 function endPan(){if(!panning)return;panning=false;cur.classList.remove('down');const c=cv3();
@@ -989,7 +1000,7 @@ function dwell(t,hot,el,b){
   if(b)b.click();else if(el&&el.tagName==='CANVAS'){fire('pointerdown',el,sx,sy,1);fire('pointerup',el,sx,sy,0);}else return;
   lastClick=t;stats.clicks++;stats.dwells++;dwellLock=[sx,sy];flash();log('dwell',b?b.id:el.tagName,Math.round(sx),Math.round(sy));}
 function cancelPress(el){window.dispatchEvent(new PointerEvent('pointercancel',{pointerId:1,pointerType:'mouse'}));fire('pointerup',el||document,sx,sy,0);}
-function release(){endPan();zooming=false;tapAt=0;cur.classList.remove('down');}
+function release(){endPan();zoomDir(0);zooming=false;tapAt=0;cur.classList.remove('down');}
 function lose(show){if(!have&&!show)return;if(have)stats.lost++;have=false;release();pose='none';rawPose='';rawN=0;lostAt=0;cur.classList.remove('on','live','lock');
   if(hoverEl){hoverEl.classList.remove('gx-hover');hoverEl=null;}
   if(show&&mode==='hand'&&running){showGuide();log('hand lost');}}
