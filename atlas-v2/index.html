@@ -766,10 +766,10 @@ body.gx-hand #goHint{display:none!important}
 <div class="g3">
 <div class="g"><i>01</i><b data-en="Point" data-zh="指"></b><span data-en="Hold up your index finger. The ring on screen follows it." data-zh="伸出食指，屏幕上的圆圈跟着走。"></span></div>
 <div class="g"><i>02</i><b data-en="Point and hold" data-zh="指着停一下"></b><span data-en="Keep one finger on a gold ring or a button for a moment and it clicks: the piece stands up, and does it again to lay it down. A quick tap of the finger also clicks." data-zh="一根手指指着金圈或按钮停一下就会点击：纸片立起来，再来一次放下。手指快速点一下也可以。"></span></div>
-<div class="g"><i>03</i><b data-en="Fist, move" data-zh="握拳移动"></b><span data-en="Make a fist to grab the map, move to drag it, open the hand to let go." data-zh="握拳＝抓住地图，移动＝拖动，张开手＝放下。"></span></div>
+<div class="g"><i>03</i><b data-en="Fist, move" data-zh="握拳移动"></b><span data-en="With the book open: make a fist to grab the map, move to drag it, open the hand to let go." data-zh="书打开时：握拳＝抓住地图，移动＝拖动，张开手＝放下。"></span></div>
 <div class="g"><i>04</i><b data-en="Two open hands" data-zh="双手张开"></b><span data-en="Raise both hands open: pull them apart to zoom in, bring them together to zoom out. Lower one hand to stop." data-zh="举起两只张开的手：拉开＝放大，靠拢＝缩小。放下一只手就停。"></span></div>
-<div class="g"><i>05</i><b data-en="Fist, then open hand" data-zh="握拳，再张开"></b><span data-en="Opens the book." data-zh="打开地图书。"></span></div>
-<div class="g"><i>06</i><b data-en="Start over" data-zh="重新开始"></b><span data-en="Point at the Start over button and hold." data-zh="指着「重新开始」按钮停一下。"></span></div>
+<div class="g"><i>05</i><b data-en="Hands together, then apart" data-zh="双手合十，再分开"></b><span data-en="Opens the book." data-zh="打开书。"></span></div>
+<div class="g"><i>06</i><b data-en="Hands together, hold" data-zh="双手合十停住"></b><span data-en="Closes the book (starts the walk over)." data-zh="合上书（会从头开始）。"></span></div>
 </div>
 <div class="row"><div id="gxSay"></div>
 <button class="btn" id="gxGo" type="button" disabled data-en="Point here and hold to begin" data-zh="指着这里停一下开始"></button>
@@ -819,12 +819,12 @@ function untip(){tipP=null;tipUntil=0;showGuide();}
 const vis=id=>{const b=$(id);return b&&!b.disabled&&getComputedStyle(b).display!=='none';};
 function nextStep(){const st=window.atlas?atlas.state().state:'',gh=$('goHint'),to=gh&&gh.textContent.includes('→')?' → '+gh.textContent.split('→').pop().trim():'';
   if(!have)return[['Raise one hand in front of the camera','把一只手举到摄像头前'],['The ring on screen will follow your index finger','屏幕上的圆圈会跟着你的食指'],null];
-  if(st==='folded'||st==='end')return[['Make a fist, then open your hand','先握拳，再张开五指'],['This opens the book. Or point at Start and hold still','这样就能打开地图书。也可以指着「开始」停一下'],'bStart'];
+  if(st==='folded'||st==='end')return[['Press both hands together, then open them apart','双手合十，再分开'],['This opens the book. Or point at Start and hold still','这样就能打开书。也可以指着「开始」停一下'],'bStart'];
   if(st==='unfolding'||st==='moving'||st==='folding')return[['Wait a moment…','稍等，地图在动…'],['',''],null];
   if(st==='finale')return[['Watch the map turn gold','看地图变成金色'],['',''],null];
   if(vis('bLeave'))return[['Point at the gold button and hold still to pick up the feather','指着金色按钮停一下，拾起羽毛'],['',''],'bLeave'];
   if(st==='station')return[['Point one finger at the next gold ring and hold still'+to,'伸出一根手指，指着下一个金圈停一下'+to],['Point at the standing piece again to lay it down','再指着立起来的东西停一下就会放下'],null];
-  if(st==='map')return[['Point one finger at the gold ring and hold still'+to,'伸出一根手指，指着金圈停一下'+to],['Fist and move to drag · Two open hands apart / together to zoom','握拳移动＝拖动 · 双手张开拉开 / 靠拢＝缩放'],null];
+  if(st==='map')return[['Point one finger at the gold ring and hold still'+to,'伸出一根手指，指着金圈停一下'+to],['Fist and move to drag · Two open hands apart / together to zoom · Hands together, hold = close','握拳移动＝拖动 · 双手张开拉开 / 靠拢＝缩放 · 双手合十停住＝合上书'],null];
   return[['',''],['',''],null];}
 let targetEl=null;
 function showGuide(){const on=mode==='hand'&&running&&!intro.classList.contains('on');guide.classList.toggle('on',on);document.body.classList.toggle('gx-hand',on);
@@ -876,12 +876,12 @@ function loop(){if(!running)return;raf=requestAnimationFrame(loop);
   frame((r&&r.landmarks)||[],t0,(r&&(r.handedness||r.handednesses))||[]);}
 /* ---------- two hands: both open, pull apart = zoom in, bring together = zoom out ---------- */
 // The picture follows the distance between the hands directly (twice as far apart = twice as close), so it stops the moment the hands stop.
-let twoGap=0,twoOn=false,twoOff=0,twoN=0,twoD0=0,primW=null;const fD={t:null,c:.6};
+let prayAt=0,lastPray=0,prayFired=false,twoGap=0,twoOn=false,twoOff=0,twoN=0,twoD0=0,primW=null;const fD={t:null,c:.6};
 function openish(h){const w=h[0];let n=0;for(const [tp,pp] of [[8,6],[12,10],[16,14],[20,18]])if(dw(w,h[tp])>dw(w,h[pp])*1.1)n++;return n>=3;}
 function frame(hs,t,hd){t=t||performance.now();hd=hd||[];
   // two detections must really be two hands: different left/right, apart from each other, about the same size (a doubled or ghost detection is not)
   if(hs.length>1){const side=k=>hd[k]&&hd[k][0]&&hd[k][0].categoryName,pa=dw(hs[0][0],hs[0][9]),pb=dw(hs[1][0],hs[1][9]);
-    const real=(!side(0)||side(0)!==side(1))&&dw(hs[0][9],hs[1][9])>Math.max(pa,pb)*1.5&&Math.min(pa,pb)/Math.max(pa,pb)>.6;
+    const diff=side(0)&&side(1)&&side(0)!==side(1),real=Math.min(pa,pb)/Math.max(pa,pb)>.6&&(diff?true:(!side(0)||side(0)!==side(1))&&dw(hs[0][9],hs[1][9])>Math.max(pa,pb)*1.5);
     if(!real){const keep=primW&&Math.hypot(hs[1][0].x-primW.x,hs[1][0].y-primW.y)<Math.hypot(hs[0][0].x-primW.x,hs[0][0].y-primW.y)?1:0;hs=[hs[keep]];}}
   let h=hs[0]||null;
   if(hs.length>1&&primW){const d=x=>Math.hypot(x[0].x-primW.x,x[0].y-primW.y);h=d(hs[0])<=d(hs[1])?hs[0]:hs[1];} // the ring stays on the hand it was on
@@ -890,6 +890,19 @@ function frame(hs,t,hd){t=t||performance.now();hd=hd||[];
   const both=hs.length>1&&openish(hs[0])&&openish(hs[1]);
   twoN=both?twoN+1:0;twoOff=both?0:twoOff+1;
   const st=stNow();
+  // hands pressed together like praying: wrists and fingertips touching
+  if(hs.length>1){const pm=(dw(hs[0][0],hs[0][9])+dw(hs[1][0],hs[1][9]))/2,apart=dw(hs[0][9],hs[1][9])/pm;
+    const pray=both&&dw(hs[0][0],hs[1][0])<pm*1.3&&dw(hs[0][12],hs[1][12])<pm*1.0;
+    if(pray){if(!prayAt)prayAt=t;lastPray=t;
+      // held 0.8 s with the book open: close it
+      if((st==='map'||st==='station')&&!prayFired&&t-prayAt>800){prayFired=true;if(twoOn)twoEnd(t);if(press('bFold')){stats.closes++;flash();tip(['Closing the book','合上书'],1600);log('pray close');}}
+      if((st==='folded'||st==='end')&&t-prayAt>400&&!prayFired)tip(['Now open your hands','现在把双手分开'],1200);
+      if(twoOn)return;}
+    else{
+      // praying first, then the hands come apart: open the book
+      if(prayAt&&!prayFired&&lastPray-prayAt>=400&&t-lastPray<1500&&apart>2.5&&(st==='folded'||st==='end')){prayFired=true;if(press('bStart')){stats.opens++;flash();tip(['Opening the book','打开书'],1600);log('pray open');}}
+      if(t-lastPray>1500){prayAt=0;prayFired=false;}}}
+  else if(prayAt&&t-lastPray>1500){prayAt=0;prayFired=false;}
   if(!twoOn&&twoN>=6&&(st==='map'||st==='station')){
     endPan();if(window.atlas&&atlas.zoomStart()){twoOn=true;fD.t=null;twoD0=0;twoGap=0;cur.classList.add('down');tip(['Two hands: pull apart to zoom in, together to zoom out','双手：拉开放大，靠拢缩小'],1800);log('two-hand zoom');}}
   if(twoOn){
@@ -932,7 +945,7 @@ function posture(h,palm){const w=h[0];let ext=0,cur=0,straight=0;
   if(p==='other'&&pose==='fist'&&ext<2)p='fist';
   if(p==='other'&&pose==='point'&&dw(w,h[8])>dw(w,h[6])*1.05)p='point';
   return [p,spread];}
-function feed(h,t){t=t||performance.now();stats.frames++;fpsN++;if(t-fpsT>1000){fps=fpsN*1000/(t-fpsT);fpsN=0;fpsT=t;const pn={point:['pointing','指'],open:['open hand','张开'],fist:['fist','握拳'],pinch:['pinch','捏住'],other:['…','…']}[pose]||['',''];const zs=twoOn?[' · two-hand zoom',' · 双手缩放']:['',''];camP=[(have?'Hand: '+pn[0]+zs[0]:'No hand')+'  '+fps.toFixed(0)+' fps · v6',(have?'手势：'+pn[1]+zs[1]:'未识别到手')+'  '+fps.toFixed(0)+' fps · v6'];camT.textContent=L(camP);}
+function feed(h,t){t=t||performance.now();stats.frames++;fpsN++;if(t-fpsT>1000){fps=fpsN*1000/(t-fpsT);fpsN=0;fpsT=t;const pn={point:['pointing','指'],open:['open hand','张开'],fist:['fist','握拳'],pinch:['pinch','捏住'],other:['…','…']}[pose]||['',''];const zs=twoOn?[' · two-hand zoom',' · 双手缩放']:['',''];camP=[(have?'Hand: '+pn[0]+zs[0]:'No hand')+'  '+fps.toFixed(0)+' fps · v7',(have?'手势：'+pn[1]+zs[1]:'未识别到手')+'  '+fps.toFixed(0)+' fps · v7'];camT.textContent=L(camP);}
   if(!h){gx.pose=null;if(have&&!lostAt)lostAt=t;if(have&&t-lostAt>T.lostMs)lose(true);return;}
   lostAt=0;if(!have){have=true;seenAt=t;fX.t=fY.t=null;lastTX=null;offX=offY=0;srcKind='';rawPose='';rawN=0;pose='none';tapAt=0;reachBase=0;cur.classList.add('on');untip();log('hand found');}
   const w0=h[0],m9=h[9],palm=dw(w0,m9)||1e-3;
@@ -992,9 +1005,6 @@ function onPose(prev,t){fromPose=prev;if(prev==='fist'&&pose!=='fist')endPan();
 function whole(t,spread){const st=stNow(),calm=t-lastPose>T.poseLock&&t-seenAt>T.settle;
   if(pose==='fist'&&t-poseSince>=T.holdMin)lastFist=t;
   if(pose==='open'&&t-poseSince>=T.holdMin)lastOpen=t;
-  // fist -> open hand: open the book
-  if(pose==='open'&&!fired&&fromPose!=='point'&&poseSince-lastFist<T.switchMs&&(st==='folded'||st==='end')&&calm){fired=true;
-    if(press('bStart')){stats.opens++;lastPose=t;flash();tip(['Opening the map','打开地图'],1600);}}
   // fist = grab the map, move to drag it, open the hand to let go. An open or moving hand never drags.
   if(pose==='fist'&&!twoOn&&!panning&&poseSince>lastPose&&t-poseSince>=T.panWait&&(st==='map'||st==='station')){const c=cv3();
     if(c){panning=true;panX=sx;panY=sy;fire('pointerdown',c,sx,sy,1);cur.classList.add('down');}}
