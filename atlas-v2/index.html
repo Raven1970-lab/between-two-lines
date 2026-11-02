@@ -864,7 +864,7 @@ function stopCam(keepBox){running=false;cancelAnimationFrame(raf);if(stream){str
 function loadModel(){if(landmarker)return Promise.resolve();if(modelP)return modelP;
   modelP=(async()=>{// window.__gxBundle is set only by the fault-test page.
     const V=await import(window.__gxBundle||'./vendor/vision_bundle.mjs');const fs=await V.FilesetResolver.forVisionTasks('./vendor/wasm');
-    const opt=d=>({baseOptions:{modelAssetPath:'./vendor/models/hand_landmarker.task',delegate:d},runningMode:'VIDEO',numHands:2,minHandDetectionConfidence:.6,minHandPresenceConfidence:.6,minTrackingConfidence:.5});
+    const opt=d=>({baseOptions:{modelAssetPath:'./vendor/models/hand_landmarker.task',delegate:d},runningMode:'VIDEO',numHands:2,minHandDetectionConfidence:.4,minHandPresenceConfidence:.4,minTrackingConfidence:.4});
     try{landmarker=await V.HandLandmarker.createFromOptions(fs,opt('GPU'));gx.delegate='GPU';}catch(e){console.warn('GPU delegate failed, using CPU',e);landmarker=await V.HandLandmarker.createFromOptions(fs,opt('CPU'));gx.delegate='CPU';}
     log('model ready',gx.delegate);})();
   modelP.catch(()=>{modelP=null;});return modelP;}
@@ -877,17 +877,17 @@ function loop(){if(!running)return;raf=requestAnimationFrame(loop);
 /* ---------- two hands: both open, pull apart = zoom in, bring together = zoom out ---------- */
 // The picture follows the distance between the hands directly (twice as far apart = twice as close), so it stops the moment the hands stop.
 let prayAt=0,lastPray=0,prayFired=false,twoGap=0,twoOn=false,twoOff=0,twoN=0,twoD0=0,primW=null;const fD={t:null,c:.6};
-function openish(h){const w=h[0];let n=0;for(const [tp,pp] of [[8,6],[12,10],[16,14],[20,18]])if(dw(w,h[tp])>dw(w,h[pp])*1.1)n++;return n>=3;}
+function openish(h){const w=h[0];let n=0;for(const [tp,pp] of [[8,6],[12,10],[16,14],[20,18]])if(dw(w,h[tp])>dw(w,h[pp])*1.1)n++;return n>=2;}
 function frame(hs,t,hd){t=t||performance.now();hd=hd||[];
   // two detections must really be two hands: different left/right, apart from each other, about the same size (a doubled or ghost detection is not)
   if(hs.length>1){const side=k=>hd[k]&&hd[k][0]&&hd[k][0].categoryName,pa=dw(hs[0][0],hs[0][9]),pb=dw(hs[1][0],hs[1][9]);
-    const diff=side(0)&&side(1)&&side(0)!==side(1),real=Math.min(pa,pb)/Math.max(pa,pb)>.6&&(diff?true:(!side(0)||side(0)!==side(1))&&dw(hs[0][9],hs[1][9])>Math.max(pa,pb)*1.5);
+    const diff=side(0)&&side(1)&&side(0)!==side(1),real=Math.min(pa,pb)/Math.max(pa,pb)>.45&&(diff?true:(!side(0)||side(0)!==side(1))&&dw(hs[0][9],hs[1][9])>Math.max(pa,pb)*1.5);
     if(!real){const keep=primW&&Math.hypot(hs[1][0].x-primW.x,hs[1][0].y-primW.y)<Math.hypot(hs[0][0].x-primW.x,hs[0][0].y-primW.y)?1:0;hs=[hs[keep]];}}
   let h=hs[0]||null;
   if(hs.length>1&&primW){const d=x=>Math.hypot(x[0].x-primW.x,x[0].y-primW.y);h=d(hs[0])<=d(hs[1])?hs[0]:hs[1];} // the ring stays on the hand it was on
   if(h)primW={x:h[0].x,y:h[0].y};
   draw(hs);
-  const both=hs.length>1&&openish(hs[0])&&openish(hs[1]);
+  const both=hs.length>1&&openish(hs[0])&&openish(hs[1]); // (openish: at least 2 fingers out, so a half-open second hand still counts)
   twoN=both?twoN+1:0;twoOff=both?0:twoOff+1;
   const st=stNow();
   // hands pressed together like praying: wrists and fingertips touching
@@ -911,7 +911,7 @@ function frame(hs,t,hd){t=t||performance.now();hd=hd||[];
     const asp=(video.videoWidth||4)/(video.videoHeight||3),a=hs[0][9],b=hs[1][9];
     const raw=Math.hypot((a.x-b.x)*asp,a.y-b.y),d=fD.t==null?(fD.t=t,fD.x=raw):(fD.x+=(raw-fD.x)*.4);if(!twoD0)twoD0=d;
     let r=d/twoD0;r=Math.abs(r-1)<.06?1:r>1?r-.06:r+.06; // small wobble of the arms does nothing
-    atlas.zoomSet(clamp(r,.25,4));lastZoom=t;stats.zooms++;
+    atlas.zoomSet(clamp(Math.pow(r,1.8),.08,12)); // stronger than 1:1: the hands can only come so close together, so zooming out needs the gainlastZoom=t;stats.zooms++;
     sx=clamp((1-(a.x+b.x)/2-T.rx0)/(T.rx1-T.rx0),0,1)*innerWidth;sy=clamp(((a.y+b.y)/2-T.ry0)/(T.ry1-T.ry0),0,1)*innerHeight;
     cur.style.transform='translate('+sx+'px,'+sy+'px)';lostAt=0;return;}
   feed(h,t);}
@@ -945,7 +945,7 @@ function posture(h,palm){const w=h[0];let ext=0,cur=0,straight=0;
   if(p==='other'&&pose==='fist'&&ext<2)p='fist';
   if(p==='other'&&pose==='point'&&dw(w,h[8])>dw(w,h[6])*1.05)p='point';
   return [p,spread];}
-function feed(h,t){t=t||performance.now();stats.frames++;fpsN++;if(t-fpsT>1000){fps=fpsN*1000/(t-fpsT);fpsN=0;fpsT=t;const pn={point:['pointing','指'],open:['open hand','张开'],fist:['fist','握拳'],pinch:['pinch','捏住'],other:['…','…']}[pose]||['',''];const zs=twoOn?[' · two-hand zoom',' · 双手缩放']:['',''];camP=[(have?'Hand: '+pn[0]+zs[0]:'No hand')+'  '+fps.toFixed(0)+' fps · v7',(have?'手势：'+pn[1]+zs[1]:'未识别到手')+'  '+fps.toFixed(0)+' fps · v7'];camT.textContent=L(camP);}
+function feed(h,t){t=t||performance.now();stats.frames++;fpsN++;if(t-fpsT>1000){fps=fpsN*1000/(t-fpsT);fpsN=0;fpsT=t;const pn={point:['pointing','指'],open:['open hand','张开'],fist:['fist','握拳'],pinch:['pinch','捏住'],other:['…','…']}[pose]||['',''];const zs=twoOn?[' · two-hand zoom',' · 双手缩放']:['',''];camP=[(have?'Hand: '+pn[0]+zs[0]:'No hand')+'  '+fps.toFixed(0)+' fps · v8',(have?'手势：'+pn[1]+zs[1]:'未识别到手')+'  '+fps.toFixed(0)+' fps · v8'];camT.textContent=L(camP);}
   if(!h){gx.pose=null;if(have&&!lostAt)lostAt=t;if(have&&t-lostAt>T.lostMs)lose(true);return;}
   lostAt=0;if(!have){have=true;seenAt=t;fX.t=fY.t=null;lastTX=null;offX=offY=0;srcKind='';rawPose='';rawN=0;pose='none';tapAt=0;reachBase=0;cur.classList.add('on');untip();log('hand found');}
   const w0=h[0],m9=h[9],palm=dw(w0,m9)||1e-3;
