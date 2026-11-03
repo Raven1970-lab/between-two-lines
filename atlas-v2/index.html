@@ -810,7 +810,8 @@ const T={ // tuning
   zoomWait:350,zoomDead:.07,
   twoEnterMs:100,twoGraceMs:450,twoTauMs:55,twoDead:.025,
   pairOverlap:.38,pairSize:.30,pairApart:1.15,
-  prayHold:800,prayArm:400,prayGap:150,prayWindow:1500}; // pair acquisition/recovery, scale-symmetric zoom dead zone, and prayer timing
+  prayHold:800,prayArm:400,prayGap:150,prayWindow:1500,
+  prayApproachMs:1200,prayOcclusionMs:1800,prayNear:3,prayConverge:.4,prayCenter:1.1,prayEdge:.55}; // pair acquisition/recovery, scale-symmetric zoom dead zone, and prayer timing
 let mode=null,lm=null,stream=null,running=false,lastVT=-1,raf=0,landmarker=null,modelP=null;
 let sx=innerWidth/2,sy=innerHeight/2,have=false,seenAt=0,lostAt=0,lastClick=0,hoverEl=null,hist=[],fps=0,fpsN=0,fpsT=0,detMs=0;
 let rawPose='',rawN=0,pose='none',fromPose='none',poseSince=0,fired=false,lastFist=-1e9,lastOpen=-1e9,lastPose=-1e9;
@@ -819,7 +820,7 @@ const stats={dwells:0,clicks:0,drags:0,zooms:0,opens:0,closes:0,lost:0,frames:0,
 /* ---------- debug recording: hand points per frame (no camera image), downloaded as a file to replay the real hand ---------- */
 const recBtn=$('gxRec');let rec=null;
 function recLabel(){recBtn.textContent=rec?L(['● Stop & save ('+rec.f.length+')','● 停止并保存（'+rec.f.length+'）']):L(['Record debug data','录制调试数据']);recBtn.classList.toggle('rec',!!rec);}
-recBtn.onclick=()=>{if(!rec){rec={meta:{v:'v11',ua:navigator.userAgent,w:innerWidth,h:innerHeight,vw:video.videoWidth,vh:video.videoHeight,delegate:gx.delegate,T:{...T},start:Date.now()},f:[],ev:[]};recLabel();return;}
+recBtn.onclick=()=>{if(!rec){rec={meta:{v:'v12',ua:navigator.userAgent,w:innerWidth,h:innerHeight,vw:video.videoWidth,vh:video.videoHeight,delegate:gx.delegate,T:{...T},start:Date.now()},f:[],ev:[]};recLabel();return;}
   const r=rec;rec=null;recLabel();const b=new Blob([JSON.stringify(r)],{type:'application/json'}),a=document.createElement('a');
   a.href=URL.createObjectURL(b);a.download='gesture-debug-'+new Date().toISOString().slice(0,19).replace(/[:T]/g,'-')+'.json';document.body.appendChild(a);a.click();setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove();},2000);};
 const r4=v=>Math.round(v*1e4)/1e4;
@@ -897,6 +898,7 @@ function loop(){if(!running)return;raf=requestAnimationFrame(loop);
 // Camera distance follows 1 / (hand distance ratio)^1.8, with a small symmetric dead zone.
 let prayAt=0,lastPray=0,prayFired=false,twoGap=0,twoOn=false,twoSince=0,twoD0=0,primW=null;
 const fD={t:null,x:0};
+let prayTrace=null;
 function openish(h){const w=h[0];let n=0;for(const [tp,pp] of [[8,6],[12,10],[16,14],[20,18]])if(dw(w,h[tp])>dw(w,h[pp])*1.1)n++;return n>=2;}
 function realPair(hs,hd){
   const a=hs[0],b=hs[1],pa=dw(a[0],a[9]),pb=dw(b[0],b[9]),pm=Math.max(pa,pb,1e-3);
@@ -907,6 +909,27 @@ function realPair(hs,hd){
   // Handedness is supporting evidence, not a veto on two clearly separated palms.
   return dw(a[9],b[9])/pm>T.pairApart||!!(side(0)&&side(1)&&side(0)!==side(1));
 }
+// A real prayer hides one palm. Preserve only an observed two-hand approach,
+// never infer prayer from a lone open hand or from duplicate detections.
+function occludedPrayer(hs,both,t,st){
+  if(!['folded','end'].includes(st)){prayTrace=null;return false;} // opening only; never infer a destructive close during zoom
+  if(prayTrace&&(prayTrace.st!==st||t-prayTrace.at>T.prayOcclusionMs))prayTrace=null;
+  if(both){
+    const a=hs[0],b=hs[1],pm=(dw(a[0],a[9])+dw(b[0],b[9]))/2||1e-3;
+    const gap=dw(a[9],b[9])/pm,center={x:(a[9].x+b[9].x)/2,y:(a[9].y+b[9].y)/2};
+    const prev=prayTrace,continuous=prev&&t-prev.at<T.prayApproachMs;
+    const widest=continuous?Math.max(prev.widest,gap):gap;
+    const approaching=continuous&&widest>2.5&&widest-gap>T.prayConverge&&gap<T.prayNear;
+    prayTrace={st,at:t,center,pm,widest,approaching};return false;
+  }
+  const q=prayTrace,h=hs.length===1&&hs[0];
+  if(!q||!q.approaching||!h||!openish(h))return false;
+  const pm=dw(h[0],h[9])||1e-3;
+  // The visible hand must stay at the pair's meeting point and turn edge-on.
+  // A hand leaving the camera while its partner remains spread is not prayer.
+  return dw(h[9],q.center)<q.pm*T.prayCenter&&dw(h[5],h[17])/pm<T.prayEdge
+    &&pm/q.pm>.5&&pm/q.pm<2;
+}
 function frame(hs,t,hd){t=t||performance.now();hd=hd||[];recFrame(hs,hd,t);
   if(hs.length>1&&!realPair(hs,hd)){
     const keep=primW&&dw(hs[1][0],primW)<dw(hs[0][0],primW)?1:0;hs=[hs[keep]];}
@@ -915,7 +938,7 @@ function frame(hs,t,hd){t=t||performance.now();hd=hd||[];recFrame(hs,hd,t);
   if(h){primW={x:h[0].x,y:h[0].y};if(!have){have=true;seenAt=t;resetSingle();cur.classList.add('on');}lostAt=0;}
   draw(hs);updateFPS(t,!!h);
   const both=hs.length>1&&openish(hs[0])&&openish(hs[1]),st=stNow();
-  let pray=false,apart=0;
+  let pray=occludedPrayer(hs,both,t,st),apart=0;
   if(both){const pm=(dw(hs[0][0],hs[0][9])+dw(hs[1][0],hs[1][9]))/2||1e-3;
     apart=dw(hs[0][9],hs[1][9])/pm;
     pray=dw(hs[0][0],hs[1][0])<pm*1.3&&dw(hs[0][12],hs[1][12])<pm;}
@@ -984,7 +1007,7 @@ function posture(h,palm){const w=h[0];let ext=0,cur=0,straight=0;
   if(p==='other'&&pose==='fist'&&ext<2)p='fist';
   if(p==='other'&&pose==='point'&&dw(w,h[8])>dw(w,h[6])*1.05)p='point';
   return [p,spread];}
-function updateFPS(t,detected){stats.frames++;fpsN++;if(t-fpsT>1000){fps=fpsN*1000/(t-fpsT);fpsN=0;fpsT=t;const pn={point:['pointing','指'],open:['open hand','张开'],fist:['fist','握拳'],pinch:['pinch','捏住'],other:['…','…']}[pose]||['',''];const zs=twoOn?[' · two-hand zoom',' · 双手缩放']:['',''];camP=[(detected?'Hand: '+pn[0]+zs[0]:'No hand')+'  '+fps.toFixed(0)+' fps · v11',(detected?'手势：'+pn[1]+zs[1]:'未识别到手')+'  '+fps.toFixed(0)+' fps · v11'];camT.textContent=L(camP);}}
+function updateFPS(t,detected){stats.frames++;fpsN++;if(t-fpsT>1000){fps=fpsN*1000/(t-fpsT);fpsN=0;fpsT=t;const pn={point:['pointing','指'],open:['open hand','张开'],fist:['fist','握拳'],pinch:['pinch','捏住'],other:['…','…']}[pose]||['',''];const zs=twoOn?[' · two-hand zoom',' · 双手缩放']:['',''];camP=[(detected?'Hand: '+pn[0]+zs[0]:'No hand')+'  '+fps.toFixed(0)+' fps · v12',(detected?'手势：'+pn[1]+zs[1]:'未识别到手')+'  '+fps.toFixed(0)+' fps · v12'];camT.textContent=L(camP);}}
 function feed(h,t){t=t||performance.now();
   if(!h){gx.pose=null;if(have&&!lostAt)lostAt=t;if(have&&t-lostAt>T.lostMs)lose(true);return;}
   lostAt=0;if(!have){have=true;seenAt=t;fX.t=fY.t=null;lastTX=null;offX=offY=0;srcKind='';rawPose='';rawN=0;pose='none';tapAt=0;reachBase=0;cur.classList.add('on');untip();log('hand found');}
@@ -1074,7 +1097,7 @@ function dwell(t,hot,el,b){
   if(b)b.click();else if(el&&el.tagName==='CANVAS'){fire('pointerdown',el,sx,sy,1);fire('pointerup',el,sx,sy,0);}else return;
   lastClick=t;stats.clicks++;stats.dwells++;dwellLock=[sx,sy];flash();log('dwell',b?b.id:el.tagName,Math.round(sx),Math.round(sy));}
 function cancelPress(el){window.dispatchEvent(new PointerEvent('pointercancel',{pointerId:1,pointerType:'mouse'}));fire('pointerup',el||document,sx,sy,0);}
-function release(){endPan();if(twoOn)twoEnd(performance.now());zooming=false;tapAt=0;cur.classList.remove('down');}
+function release(){prayTrace=null;prayAt=lastPray=0;prayFired=false;endPan();if(twoOn)twoEnd(performance.now());zooming=false;tapAt=0;cur.classList.remove('down');}
 function lose(show){if(!have&&!show)return;if(have)stats.lost++;have=false;release();pose='none';rawPose='';rawN=0;lostAt=0;cur.classList.remove('on','live','lock');
   if(hoverEl){hoverEl.classList.remove('gx-hover');hoverEl=null;}
   if(show&&mode==='hand'&&running){showGuide();log('hand lost');}}
